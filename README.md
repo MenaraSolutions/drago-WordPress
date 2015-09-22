@@ -13,3 +13,6 @@ it's fetched and saved as post metadata (in your local database), ready to be di
 
 # OMG, what's the catch?
 No catch, really. Just the simplest way to translate your WP, and somehow nobody has done it already.
+
+# Contact & support
+Drago is being developed by Menara Solutions Pty Ltd, a Melbourne-based company. If you have any questions, complaints or feedbacks, drop us a line at https://www.menara.com.au
