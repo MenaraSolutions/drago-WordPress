@@ -3,7 +3,7 @@
 Plugin Name: Drago
 Plugin URI: https://www.drago.mn
 Description: Wordpress localization
-Version: 2015.09.06
+Version: 2015.09.26
 Author: Menara Solutions Pty Ltd < help@menara.com.au >
 Author URI: https://www.menara.com.au
 */
@@ -17,12 +17,12 @@ class Drago {
 
     // List of supported languages
     private $languages = [
-        'en' => [ 'locale' => 'en_GB' ],
-        'ru' => [ 'locale' => 'ru_RU' ]
+        'en' => [ 'locale' => 'en_GB', 'endpoint' => 'en' ],
+        'ru' => [ 'locale' => 'ru_RU', 'endpoint' => 'ru' ]
     ];
 
     private $key = null;
-    private $currentLanguage = null;
+    private $sourceLanguage = 'en';
 
     const DRAGO_MAX_UPLOAD_SIZE = 8000000;
 
@@ -34,7 +34,6 @@ class Drago {
         add_filter('query_vars', array($this, 'query_vars'));
         add_filter('locale' , array($this, 'locale'));
         add_filter('the_permalink', array($this, 'append_query_string'));
-        add_filter('request', array($this, 'set_query_var'));
 
         // Admin panel
         add_action('admin_menu', array($this, 'my_plugin_menu'));
@@ -48,23 +47,26 @@ class Drago {
         add_filter('the_excerpt', array($this, 'callback'));
         add_filter('widget_text', array($this, 'callback'));
         add_action('get_header', array($this, 'callback'));
-        //add_action('get_header', array($this, 'buffer_start'));
-        //add_action('wp_footer', array($this, 'buffer_end'));
 
         // Our client key
         $this->key = get_option('drago_key');
     }
 
     /**
-     * @param $vars
-     * @return mixed
+     * Attempt to find current language from endpoint
+     *
+     * @return int|string
      */
-    function set_query_var($vars) {
-        if (isset($vars['lang']) && $vars['lang'] === '') {
-            $vars['lang'] = 'ru';
+    public function getCurrentLanguage() {
+        global $wp_query;
+
+        foreach($this->languages as $key => $value) {
+            if (isset($wp_query->query_vars['lang_' . $key]) && $wp_query->query_vars['lang_' . $key] === '') {
+                return $key;
+            }
         }
 
-        return $vars;
+        return $this->sourceLanguage;
     }
 
     /**
@@ -88,13 +90,17 @@ class Drago {
     }
 
     /**
-     * Add endpoints (rewrites) to all existing pages (links)
+     * Add endpoints (rewrites) to all existing pages (links) for languages other than original
      */
     function add_endpoints() {
-        add_rewrite_endpoint('ru', EP_ALL, 'lang'); // Adds endpoint to all links
+        foreach ($this->languages as $key => $value) {
+            if ($key != $this->sourceLanguage) {
+                add_rewrite_endpoint($value['endpoint'], EP_ALL, 'lang_' . $key);
+            }
+        }
     }
 
-    function translatePost($post) {
+    private function translatePost($post) {
         if (!empty($post->ID)) {
             $new_title = get_post_meta($post->ID, 'drago_local_ru', true);
             if (!empty($new_title)) $post->post_title = $new_title;
@@ -110,22 +116,14 @@ class Drago {
      * @return mixed
      */
     function callback($buffer) {
-        // modify buffer here, and then return the updated code
-        //$buffer = str_replace('Adasd asd', get_the_ID(), $buffer);
         $this->translatePost($GLOBALS['post']);
 
         return $buffer;
     }
 
-    function buffer_start() {
-        ob_start(array($this, "callback"));
-    }
-
-    function buffer_end() {
-        ob_end_flush();
-    }
-
-    // SETTINGS PAGE SETUP
+    /**
+     * Settings page in WP Admin
+     */
     function my_plugin_settings_page() {
         ?>
         <div class="wrap">
@@ -264,12 +262,9 @@ class Drago {
     function locale($locale) {
         global $wp_locale;
 
-        //echo 'lang = '.get_query_var('lang');
-        //return $locale;
         // If we got a language parameter and if that language is supported by Drago
-        //if (isset($wp_query->query_vars['ru'])) {
-        if (get_query_var('lang', false) && array_key_exists(get_query_var('lang', false), $this->languages)) {
-            $new_locale = $this->languages[get_query_var('lang')]['locale'];
+        if ($this->getCurrentLanguage() != $this->sourceLanguage) {
+            $new_locale = $this->languages[$this->getCurrentLanguage()]['locale'];
 
             // Only reload the text domains and locale if there has been a change
             if ($new_locale != $locale) {
@@ -287,28 +282,16 @@ class Drago {
         return $locale;
     }
 
-    /*
-    function add_rewrite_rules() {
-        global $wp_rewrite;
-
-        $rules = array(
-            //'([a-z]{2})/category/(.+?)/?$'                              => 'index.php?lang_code=$matches[1]&except_category_naame=$matches[2]',
-            //'except/category/(.+?)/feed/(feed|rdf|rss|rss2|atom)/?$'  => 'index.php?lang_code=ru&except_category_name=$matches[1]&feed=$matches[2]',
-            //'except/category/(.+?)/(feed|rdf|rss|rss2|atom)/?$'       => 'index.php?lang_code=ru&except_category_name=$matches[1]&feed=$matches[2]',
-            //'except/category/(.+?)/page/?([0-9]{1,})/?$'              => 'index.php?lang_code=ru&except_category_name=$matches[1]&paged=$matches[2]',
-        );
-
-        $wp_rewrite->rules = $rules + (array)$wp_rewrite->rules;
-    } */
-
     /**
-     * Add one extra variable to existing list
+     * Add extra variables to existing list
      *
      * @param $public_query_vars
      * @return array
      */
     function query_vars($public_query_vars) {
-        $public_query_vars[] = 'lang';
+        foreach($this->languages as $key => $value) {
+            if ($key != $this->sourceLanguage) $public_query_vars[] = 'lang_' . $key;
+        }
 
         return $public_query_vars;
     }
