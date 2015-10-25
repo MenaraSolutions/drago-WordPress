@@ -1,11 +1,12 @@
 <?php
 /*
 Plugin Name: Drago
-Plugin URI: https://www.drago.mn
-Description: Wordpress localization
+Plugin URI: http://wordpress.org/plugins/drago/
+Description: Easy WordPress localization
 Version: 2015.09.26
 Author: Menara Solutions Pty Ltd < help@menara.com.au >
 Author URI: https://www.menara.com.au
+Text Domain: drago
 */
 
 /**
@@ -26,7 +27,7 @@ class Drago {
 
     const DRAGO_MAX_UPLOAD_SIZE = 8000000;
 
-    function __construct() {
+    public function __construct() {
         register_activation_hook( __FILE__, array($this, 'activate'));
         register_deactivation_hook( __FILE__, array($this, 'deactivate'));
 
@@ -75,7 +76,7 @@ class Drago {
      * @param $url
      * @return string
      */
-    function append_query_string($url) {
+    public function append_query_string($url) {
         if (get_query_var('lang', false))
             $url = add_query_arg('lang', get_query_var('lang'), $url);
 
@@ -85,14 +86,15 @@ class Drago {
     /**
      * Menu to appear in the sidebar in admin panel
      */
-    function my_plugin_menu() {
-        add_menu_page('Drago Settings', 'Drago Plugin Settings', 'administrator', 'drago', array($this, 'my_plugin_settings_page'), 'dashicons-admin-generic');
+    public function my_plugin_menu() {
+        //add_menu_page('Drago Settings', 'Drago Plugin Settings', 'administrator', 'drago', array($this, 'my_plugin_settings_page'), 'dashicons-admin-generic');
+        add_options_page( 'Drago Settings', 'Drago Localisation', 'administrator', 'drago', array($this, 'my_plugin_settings_page'));
     }
 
     /**
      * Add endpoints (rewrites) to all existing pages (links) for languages other than original
      */
-    function add_endpoints() {
+    public function add_endpoints() {
         foreach ($this->languages as $key => $value) {
             if ($key != $this->sourceLanguage) {
                 add_rewrite_endpoint($value['endpoint'], EP_ALL, 'lang_' . $key);
@@ -115,7 +117,7 @@ class Drago {
      * @param $buffer
      * @return mixed
      */
-    function callback($buffer) {
+    public function callback($buffer) {
         $this->translatePost($GLOBALS['post']);
 
         return $buffer;
@@ -124,7 +126,31 @@ class Drago {
     /**
      * Settings page in WP Admin
      */
-    function my_plugin_settings_page() {
+    public function my_plugin_settings_page() {
+        $lastSubmit = get_option('drago_last_update');
+        if (empty($lastSubmit)) {
+            $lastText = 'Never';
+        } else {
+            $lastSubmit = json_decode($lastSubmit);
+            $lastText = date('jS F Y h:i:s A', $lastSubmit->timestamp) .  ' UTC, ';
+
+            switch ($lastSubmit->status) {
+                case 200:
+                    $lastText .= 'successful';
+                    break;
+
+                case 404:
+                    $lastText .= 'server error';
+                    break;
+
+                case 500:
+                    $lastText .= 'network error';
+                    break;
+
+                default:
+                    $lastText .= 'result unknown';
+            }
+        }
         ?>
         <div class="wrap">
             <h2>Drago Project Details</h2>
@@ -144,8 +170,10 @@ class Drago {
                 <?php submit_button(); ?>
             </form>
 
+            <p>Last text upload: <?php echo $lastText; ?></p>
+
             <a target="_blank" href="http://wordpress.org/support/view/plugin-reviews/localizejs?rate=5#postform">
-                <?php _e( 'Love Localize.js? Help spread the word by rating us 5★ on WordPress.org', 'drago' ); ?>
+                <?php _e( 'Love Drago? Help spread the word by rating us 5★ on WordPress.org', 'drago' ); ?>
             </a>
         </div>
         <?php
@@ -154,7 +182,7 @@ class Drago {
     /**
      * Cron task
      */
-    function checkForUpdates()
+    public function checkForUpdates()
     {
         global $wpdb;
 
@@ -183,10 +211,17 @@ class Drago {
 
         if (count($objectsToSubmit) == 0) return false;
 
+        if ($lastUpdate = get_option('drago_last_update')) {
+            $lastUpdateTimestamp = json_decode($lastUpdate)->timestamp;
+        } else {
+            $lastUpdateTimestamp = 0;
+        }
+
         // Submit the list to Drago
         $postData = http_build_query(
             array(
-                'posts'     => $objectsToSubmit
+                'posts'     => $objectsToSubmit,
+                'min_ts'    => $lastUpdateTimestamp
             )
         );
 
@@ -199,11 +234,18 @@ class Drago {
         );
 
         $context  = stream_context_create($opts);
-        $jsonInput = file_get_contents('http://dragoapi.loc:8080/api/v1/text/' . $this->key, false, $context);
-        if (empty($jsonInput)) return false;
+        $jsonInput = file_get_contents('http://dragoapi.loc:8080/api/v1/' . $this->key . '/texts/1', false, $context);
+
+        if (empty($jsonInput)) {
+            update_option('drago_last_update', json_encode(['timestamp' => time(), 'status' => 500]));
+            return false;
+        }
 
         $objectOutput = json_decode($jsonInput);
-        if ($objectOutput->code != 200) return false;
+        if ($objectOutput->code != 200) {
+            update_option('drago_last_update', json_encode(['timestamp' => time(), 'status' => 404]));
+            return false;
+        }
 
         $language = 'ru';
 
@@ -213,34 +255,33 @@ class Drago {
                 update_post_meta($oneObject->id, 'drago_' . $language, $oneObject->translations->{$language});
             }
         }
+
+        update_option('drago_last_update', json_encode(['timestamp' => time(), 'status' => 200]));
     }
 
     /**
      * Set API key for the website
      */
-    function my_plugin_settings() {
+    public function my_plugin_settings() {
         register_setting('my-plugin-settings-group', 'drago_key');
     }
 
     /**
      * When the plugin is activated – flush existing rewrite rules
      */
-    function activate() {
+    public function activate() {
         global $wp_rewrite;
 
         $wp_rewrite->flush_rules(); // force call to generate_rewrite_rules()
 
         // Check for new content
         wp_schedule_event(time(), 'hourly', 'drago_check');
-
-        // Initial check
-        //$this->checkForUpdates();
     }
 
     /**
      * When the plugin is deactivated – delete our rewrite rules filter and flush rules
      */
-    function deactivate() {
+    public function deactivate() {
         global $wp_rewrite;
 
         //remove_action( 'generate_rewrite_rules', array($this, 'add_rewrite_rules') );
@@ -259,7 +300,7 @@ class Drago {
      * @param $locale
      * @return string
      */
-    function locale($locale) {
+    public function locale($locale) {
         global $wp_locale;
 
         // If we got a language parameter and if that language is supported by Drago
@@ -288,7 +329,7 @@ class Drago {
      * @param $public_query_vars
      * @return array
      */
-    function query_vars($public_query_vars) {
+    public function query_vars($public_query_vars) {
         foreach($this->languages as $key => $value) {
             if ($key != $this->sourceLanguage) $public_query_vars[] = 'lang_' . $key;
         }
