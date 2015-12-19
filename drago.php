@@ -26,7 +26,8 @@ class Drago {
         'ru' => [ 'locale' => 'ru_RU', 'endpoint' => 'ru' ]
     ];
 
-    private $prefixAPI = 'http://dragoapi.loc:8080/api/v1/';
+    private $prefixAPI = 'http://demo.drago.mn/api/v1/';
+//    private $prefixAPI = 'http://dragoapi.loc:8080/api/v1/';
     private $key = null;
     private $sourceLanguage = 'en';
 
