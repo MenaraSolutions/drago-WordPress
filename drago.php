@@ -23,7 +23,8 @@ class Drago {
     // List of supported languages
     private $languages = [
         'en' => [ 'locale' => 'en_GB', 'endpoint' => 'en' ],
-        'ru' => [ 'locale' => 'ru_RU', 'endpoint' => 'ru' ]
+        'ru' => [ 'locale' => 'ru_RU', 'endpoint' => 'ru' ],
+        'es' => [ 'locale' => 'es_ES', 'endpoint' => 'es' ]
     ];
 
 //    private $prefixAPI = 'http://demo.drago.mn/api/v1/';
@@ -242,7 +243,7 @@ class Drago {
     /**
      * Get Drago meta data from WP options
      */
-    protected function getMetaData()
+    public function getMetaData()
     {
         $data = get_option('drago_metadata');
         if (!$data) return [
@@ -345,7 +346,7 @@ class Drago {
 
         // Looks like a server error
         $objectOutput = json_decode($jsonInput);
-        if ($objectOutput->code != 200) {
+        if (is_null($objectOutput) || $objectOutput->code != 200) {
             $meta['last_update'] = ['timestamp' => time(), 'status' => $objectOutput->code];
             $this->setMetaData($meta);
             return false;
@@ -357,17 +358,23 @@ class Drago {
         $meta['extra_languages'] = $objectOutput->meta->website->extra_languages;
         $meta['last_texts_submit'] = $objectOutput->meta->website->last_texts_submit;
 
-        // Temporary hard code
-        $language = 'ru';
-
         if (!empty($objectOutput->data)) {
             foreach($objectOutput->data as $oneObject) {
-                if (!empty($oneObject->translations->{$language})) {
-                    $pageMeta = [
-                        'fetch_time' => time(),
-                        'content_' . $language => $oneObject->translations->{$language}
-                    ];
+                $oldMeta = get_post_meta($oneObject->id, 'drago', true);
+                if (!empty($oldMeta)) $pageMeta = json_decode($oldMeta, true); else $pageMeta = [];
+                $counter = 0;
+
+                foreach($meta['extra_languages'] as $language) {
+                    if (!empty($oneObject->translations->{$language})) {
+                        $pageMeta['fetch_time'] = time();
+                        $pageMeta['content_' . $language] = $oneObject->translations->{$language};
+                        $counter++;
+                    }
+                }
+
+                if ($counter) {
                     update_post_meta($oneObject->id, 'drago', wp_slash(json_encode($pageMeta)));
+                    unset($pageMeta);
                 }
             }
 

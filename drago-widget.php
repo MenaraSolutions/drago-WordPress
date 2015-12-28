@@ -4,8 +4,22 @@
  */
 class Drago_Widget extends WP_Widget {
 
+    protected $meta;
+
+    protected $languageTitles = [
+        'en' => 'English',
+        'es' => 'Español',
+        'ru' => 'По-русски',
+        'zh' => '中国普通话'
+    ];
+
+    protected $currentUrl;
+    protected $currentLanguage;
+
     function __construct()
     {
+        global $drago, $wp;
+
         load_plugin_textdomain( 'drago' );
 
         parent::__construct(
@@ -17,45 +31,95 @@ class Drago_Widget extends WP_Widget {
         if (is_active_widget( false, false, $this->id_base)) {
             add_action('wp_head', array( $this, 'css'));
         }
+
+        if (isset($drago))
+            $this->meta = $drago->getMetaData();
+
+        $this->currentUrl = home_url(add_query_arg(NULL, NULL));
     }
 
+    /**
+     * ToDo: add ugly links support
+     *
+     * @param $language
+     *
+     * @return string
+     */
+    protected function getLink($language)
+    {
+        if (!$this->meta['status']) return null;
+
+        if ($this->currentLanguage != $this->meta['original_language']) {
+            $pathElements = explode('/', trim(parse_url($this->currentUrl, PHP_URL_PATH), '/'));
+            array_pop($pathElements);
+            $path = implode('/', $pathElements);
+
+            $nudeUrl = parse_url($this->currentUrl, PHP_URL_SCHEME) . '://' .
+                parse_url($this->currentUrl, PHP_URL_HOST) .
+                ':' . parse_url($this->currentUrl, PHP_URL_PORT) . '/' .
+                $path .
+                parse_url($this->currentUrl, PHP_URL_QUERY);
+        } else {
+            $nudeUrl = $this->currentUrl;
+        }
+
+        if ($language == $this->meta['original_language']) return $nudeUrl . '/';
+        if ($nudeUrl[strlen($nudeUrl) - 1] != '/') $nudeUrl .= '/';
+
+        return $nudeUrl . $language . '/';
+    }
+
+    /**
+     *
+     */
     function css() {
         ?>
 
         <style type="text/css">
-            .a-stats {
-                width: auto;
+            /* basic menu code 1.0 */
+            .language-dropmenu ul {
+                margin: 0;
+                padding: 0;
             }
-            .a-stats a {
-                background: #7CA821;
-                background-image:-moz-linear-gradient(0% 100% 90deg,#5F8E14,#7CA821);
-                background-image:-webkit-gradient(linear,0% 0,0% 100%,from(#7CA821),to(#5F8E14));
-                border: 1px solid #5F8E14;
-                border-radius:3px;
-                color: #CFEA93;
-                cursor: pointer;
-                display: block;
-                font-weight: normal;
-                height: 100%;
-                -moz-border-radius:3px;
-                padding: 7px 0 8px;
-                text-align: center;
+
+            .language-dropmenu li {
+                float: left;
+                list-style: none;
+                background: #eeeeee;
+                position: relative;
+            }
+
+            .language-dropmenu li ul li {
+                float: none;
+            }
+
+            .language-dropmenu li ul {
+                display: none;
+                position: absolute;
+                left: 0; top: 100%;
+                width: 10em;
+                box-shadow: 0 0 2px rgba(0,0,0,0.2);
+                z-index: 999;
+            }
+
+            .language-dropmenu li a {
                 text-decoration: none;
-                -webkit-border-radius:3px;
-                width: 100%;
-            }
-            .a-stats a:hover {
-                text-decoration: none;
-                background-image:-moz-linear-gradient(0% 100% 90deg,#6F9C1B,#659417);
-                background-image:-webkit-gradient(linear,0% 0,0% 100%,from(#659417),to(#6F9C1B));
-            }
-            .a-stats .count {
-                color: #FFF;
                 display: block;
-                font-size: 15px;
-                line-height: 16px;
-                padding: 0 13px;
-                white-space: nowrap;
+                padding: 0.5em 1em;
+            }
+
+            .language-dropmenu li:hover > ul {
+                display: block;
+            }
+
+            .language-dropmenu li:hover {
+                background: #d8d8d8;
+            }
+
+            .language-dropmenu:after {
+                content: "";
+                display: table;
+                clear: both;
             }
         </style>
 
@@ -86,27 +150,37 @@ class Drago_Widget extends WP_Widget {
 
     function widget($args, $instance)
     {
-        // Get available languages from the options
-        $languages = 'English';
+        global $drago;
+
+        $this->currentLanguage = $drago->getCurrentLanguage();
 
         echo $args['before_widget'];
 
-        if (!empty( $instance['title'])) {
+        if (!empty($instance['title'])) {
             echo $args['before_title'];
             echo esc_html($instance['title']);
             echo $args['after_title'];
         }
-        ?>
 
-        <div class="a-stats wide-fat">
-            <select>
-                <option>English</option>
-                <option>Russian</option>
-                <option>Spanish</option>
-            </select>
-        </div>
+        if ($this->meta['status']) {
+            ?>
 
-        <?php
+            <ul class="language-dropmenu">
+                <li class="dir"><a href="#"><?php echo $this->languageTitles[$this->currentLanguage]; ?></a>
+                    <ul>
+                        <?php
+                        foreach (array_merge($this->meta['extra_languages'], [$this->meta['original_language']]) as $language) {
+                        if ($language !== $this->currentLanguage) {
+                        ?>
+                        <li class="dir"><a href="<?php echo $this->getLink($language); ?>"><?php echo $this->languageTitles[$language]; ?></a></li>
+                        <?php } } ?>
+                    </ul>
+                </li>
+            </ul>
+
+            <?php
+        }
+
         echo $args['after_widget'];
     }
 }
