@@ -24,7 +24,8 @@ class Drago {
     private $languages = [
         'en' => [ 'locale' => 'en_GB', 'endpoint' => 'en' ],
         'ru' => [ 'locale' => 'ru_RU', 'endpoint' => 'ru' ],
-        'es' => [ 'locale' => 'es_ES', 'endpoint' => 'es' ]
+        'es' => [ 'locale' => 'es_ES', 'endpoint' => 'es' ],
+        'zh' => [ 'locale' => 'zh_CN', 'endpoint' => 'zh' ]
     ];
 
 //    private $prefixAPI = 'http://demo.drago.mn/api/v1/';
@@ -254,6 +255,8 @@ class Drago {
             'status' => false
         ];
 
+        if (!empty($data['original_language'])) $this->sourceLanguage = json_decode($data)['original_language'];
+
         return json_decode($data, true);
     }
 
@@ -444,9 +447,11 @@ class Drago {
 
             // Only reload the text domains and locale if there has been a change
             if ($new_locale != $locale) {
+                $path = plugin_dir_path( __FILE__ ) . '/languages/';
+
                 // To ensure WP messages are displayed in new language
-                load_default_textdomain($new_locale);
-                load_textdomain('default', 'admin-' . $new_locale);
+                load_textdomain('default', $path . $new_locale . '.mo');
+                load_textdomain('default', $path . 'admin-' . $new_locale . '.mo');
 
                 // To ensure dates are displayed in new language
                 $wp_locale->init();
